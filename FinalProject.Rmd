@@ -1,0 +1,127 @@
+---
+title: 'Train Your Wearable Devices To Know Your Activity'
+author: "Cong"
+date: "August 4, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE,cache=TRUE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+Wearable devices such as Jawbone up, Nike FuelBand, Fitbi and Apple Watch are very popular. They use small sensors to collect a large amount of data about personal activities. Those data are promising for a wide range of usage: providing customized exercise monitoring, providing health advice, and so on. In this projects, I construct a supervised machine learning algorithm to predict the user's activity from the data collecting by sensors in wearable devices.
+
+## Fetch Data
+To train the machine I use the Creative Commons license licensed WLE dataset. (Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.) 
+```{r}
+TrainUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+TestUrl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+TrainFileName <- "pml-training.csv"
+TestFileName <- "pml-testing.csv"
+
+if(!file.exists(TrainFileName)) download.file(TrainUrl, TrainFileName)
+if(!file.exists(TestFileName)) download.file(TestUrl, TestFileName)
+
+train_csv <- read.csv(TrainFileName, na.strings=c("NA","#DIV/0!",""))
+test_csv <- read.csv(TestFileName, na.strings=c("NA","#DIV/0!",""))
+dim(train_csv)
+
+```
+Now, we can see this is a large set of data with 160 features. But we can narrow down the features and only keep meaningful features, and this will help our algorithm run better.
+
+## Clean Data
+
+* I filter out the features with little variance, because they help little relationship with the user's activity catergory.
+* I filter out by hand several features which are simple sequence number, and time stamp.
+* I filter out features which are mainly occupied by NA. NA should not help in predicting.
+In the end, I split the datasets into train set and test set. The test set helps select the best algorithm.
+
+```{r, warning=FALSE, message=FALSE}
+library(caret)
+
+# remove features with little variance, which won't help in predicting.
+Useless_list <- nearZeroVar(train_csv)
+train_csv <- train_csv[-Useless_list]
+
+# remove the first feature, which is just enumerate.
+train_csv <- train_csv[-c(1,2,3,4)]
+
+# remove features whose NA is 60%.
+NA_list <- NULL
+N <- nrow(train_csv)
+for( i in 1:length(train_csv))
+{
+    if(sum(is.na(train_csv[,i]))/N >=0.6) NA_list <- c(NA_list,-i)
+}
+train_csv <- train_csv[,NA_list]
+
+set.seed(123456789)
+train_index <- createDataPartition(train_csv$classe, p=0.6, list = F)
+train <- train_csv[train_index,]
+test <- train_csv[-train_index,]
+
+```
+
+## Model 1: Decision Trees
+
+Implementing the Decision Trees method, and the predicting in test set data is good.
+
+```{r, warning=FALSE, message=FALSE}
+library(rattle)
+library(rpart)
+set.seed(123456789)
+model1 <- rpart(classe ~ ., data=train)
+
+fancyRpartPlot(model1)
+
+predict_model1 <- predict(model1, test, type ="class")
+
+Matrix_model1 <- confusionMatrix(predict_model1,test$classe)
+
+Matrix_model1$table
+
+```
+
+
+## Model 2: Random Forest
+
+Implementing the Random Forest method, and the predicting in test set data is obviously better than decision trees method.
+
+```{r, warning=FALSE, message=FALSE}
+library(randomForest)
+set.seed(123456789)
+model2 <- randomForest(classe ~ ., data=train)
+
+predict_model2 <- predict(model2, test, type ="class")
+
+Matrix_model2 <- confusionMatrix(predict_model2,test$classe)
+
+Matrix_model2$table
+
+```
+
+
+## Make a prediction
+
+In the end, I am showing the prediction given by my trained algorithm.
+
+```{r, warning=FALSE, message=FALSE}
+
+###### throw the un-necessary features as the training process ######
+# remove features with little variance, which won't help in predicting.
+test_csv <- test_csv[-Useless_list]
+# remove the first feature, which is just enumerate.
+test_csv <- test_csv[-c(1,2,3,4)]
+# remove features whose NA is 60%.
+test_csv <- test_csv[,NA_list]
+
+###### predict ######
+# change last column data class
+test_csv <- test_csv[-length(test_csv)]
+test_csv$classe <- test[1:nrow(test_csv),]
+# by binding a new row and remove it, to ensure the same data class.
+test_csv <- rbind(train[1,],test_csv)
+test_csv <- test_csv[-1,]
+predict_test <- predict(model2, test_csv, type ="class")
+predict_test
+```
+
